@@ -1,0 +1,53 @@
+name: YouTube Downloader - Simple
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'YouTube URL'
+        required: true
+      quality:
+        description: 'Quality'
+        required: true
+        default: '1080'
+        type: choice
+        options:
+          - '1080'
+          - '720'
+          - '480'
+          - 'audio'
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install yt-dlp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install yt-dlp
+
+      - name: Download
+        run: |
+          mkdir output
+          cd output
+          
+          if [ "${{ github.event.inputs.quality }}" = "audio" ]; then
+            yt-dlp -f bestaudio --extract-audio --audio-format mp3 \
+              -o "%(title)s.%(ext)s" \
+              "${{ github.event.inputs.url }}"
+          else
+            yt-dlp -f "bestvideo[height<=${{ github.event.inputs.quality }}]+bestaudio/best" \
+              --merge-output-format mp4 \
+              -o "%(title)s.%(ext)s" \
+              "${{ github.event.inputs.url }}"
+          fi
+          
+          echo "VIDEO_PATH=$(pwd)" >> $GITHUB_ENV
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: video
+          path: output/
+          retention-days: 7
