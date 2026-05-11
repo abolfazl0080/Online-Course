@@ -1,0 +1,83 @@
+name: 01- 💾 YouTube Downloader (Fixed)
+
+on:
+  workflow_dispatch:
+    inputs:
+      youtube_urls:
+        description: '🔗 YouTube video URL(s) — separate with spaces'
+        required: true
+        type: string
+      quality:
+        description: '🎬 Video quality'
+        required: false
+        default: 'best'
+        type: choice
+        options:
+          - best
+          - 1080
+          - 720
+          - audio
+
+jobs:
+  download-youtube:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip ffmpeg
+          pip3 install --upgrade yt-dlp
+
+      - name: Download YouTube Video
+        run: |
+          mkdir -p downloads
+
+          # دریافت لینک از input
+          URLS="${{ github.event.inputs.youtube_urls }}"
+          QUALITY="${{ github.event.inputs.quality }}"
+
+          # تنظیم کیفیت
+          if [ "$QUALITY" = "best" ]; then
+            FORMAT="bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+          elif [ "$QUALITY" = "1080" ]; then
+            FORMAT="bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]"
+          elif [ "$QUALITY" = "720" ]; then
+            FORMAT="bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]"
+          elif [ "$QUALITY" = "audio" ]; then
+            FORMAT="bestaudio/best"
+          else
+            FORMAT="best"
+          fi
+
+          # دانلود با retry mechanism ساده
+          for URL in $URLS; do
+            echo "Downloading: $URL"
+            
+            if [ "$QUALITY" = "audio" ]; then
+              yt-dlp -f "$FORMAT" \
+                --extract-audio --audio-format mp3 \
+                --output "downloads/%(title)s.%(ext)s" \
+                --retries 10 \
+                --no-playlist \
+                "$URL"
+            else
+              yt-dlp -f "$FORMAT" \
+                --merge-output-format mp4 \
+                --output "downloads/%(title)s.%(ext)s" \
+                --retries 10 \
+                --no-playlist \
+                "$URL"
+            fi
+          done
+
+          echo "Download complete!"
+          ls -la downloads/
+
+      - name: Upload as Artifact (مستقیم دانلود کن)
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-downloads
+          path: downloads/
+          retention-days: 7
