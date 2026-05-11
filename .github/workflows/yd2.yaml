@@ -1,4 +1,4 @@
-name: YouTube Downloader - Simple
+name: YouTube Downloader with Cookie Support
 
 on:
   workflow_dispatch:
@@ -6,16 +6,11 @@ on:
       url:
         description: 'YouTube URL'
         required: true
-      quality:
-        description: 'Quality'
-        required: true
-        default: '1080'
-        type: choice
-        options:
-          - '1080'
-          - '720'
-          - '480'
-          - 'audio'
+      use_cookies:
+        description: 'Use cookies (recommended)'
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   download:
@@ -25,29 +20,33 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          pip install yt-dlp
-
-      - name: Download
+          pip install --upgrade yt-dlp
+      
+      - name: Setup cookies
+        if: ${{ github.event.inputs.use_cookies == 'true' }}
         run: |
-          mkdir output
-          cd output
-          
-          if [ "${{ github.event.inputs.quality }}" = "audio" ]; then
-            yt-dlp -f bestaudio --extract-audio --audio-format mp3 \
-              -o "%(title)s.%(ext)s" \
-              "${{ github.event.inputs.url }}"
+          if [ -n "${{ secrets.YOUTUBE_COOKIES }}" ]; then
+            echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+            echo "COOKIE_ARGS=--cookies cookies.txt" >> $GITHUB_ENV
           else
-            yt-dlp -f "bestvideo[height<=${{ github.event.inputs.quality }}]+bestaudio/best" \
-              --merge-output-format mp4 \
-              -o "%(title)s.%(ext)s" \
-              "${{ github.event.inputs.url }}"
+            echo "COOKIE_ARGS=" >> $GITHUB_ENV
+            echo "⚠️ No cookies found in secrets, trying without..."
           fi
-          
-          echo "VIDEO_PATH=$(pwd)" >> $GITHUB_ENV
-
-      - name: Upload
+      
+      - name: Download video
+        run: |
+          yt-dlp ${{ env.COOKIE_ARGS }} \
+            --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \
+            --extractor-args "youtube:player_client=web,mweb,android" \
+            --sleep-interval 5 \
+            --format "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" \
+            --merge-output-format mp4 \
+            -o "%(title)s.%(ext)s" \
+            "${{ github.event.inputs.url }}"
+      
+      - name: Upload video
         uses: actions/upload-artifact@v4
         with:
-          name: video
-          path: output/
+          name: downloaded-video
+          path: "*.mp4"
           retention-days: 7
