@@ -1,7 +1,7 @@
-name: Build V2Ray Config
+name: Simple V2Ray Config Saver
 
 on:
-  workflow_dispatch:  # فقط اجرای دستی
+  workflow_dispatch:
     inputs:
       server_address:
         description: 'Server IP or Domain'
@@ -9,185 +9,38 @@ on:
       port:
         description: 'Port'
         required: true
-        default: '443'
       uuid:
-        description: 'UUID (leave empty for random)'
-        required: false
-      path:
-        description: 'WebSocket path'
-        required: false
-        default: '/v2ray'
+        description: 'UUID'
+        required: true
 
 jobs:
-  build-config:
+  save-config:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Generate random UUID if not provided
-        id: uuid
+      - name: Create config file
         run: |
-          if [ -z "${{ github.event.inputs.uuid }}" ]; then
-            RANDOM_UUID=$(cat /proc/sys/kernel/random/uuid)
-            echo "uuid=$RANDOM_UUID" >> $GITHUB_OUTPUT
-          else
-            echo "uuid=${{ github.event.inputs.uuid }}" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Create V2Ray config.json
-        run: |
-          cat > config.json << EOF
-          {
-            "inbounds": [
-              {
-                "port": 10808,
-                "protocol": "socks",
-                "sniffing": {
-                  "enabled": true,
-                  "destOverride": ["http", "tls"]
-                },
-                "settings": {
-                  "auth": "noauth",
-                  "udp": true
-                }
-              },
-              {
-                "port": 10809,
-                "protocol": "http",
-                "settings": {
-                  "auth": "noauth",
-                  "udp": true
-                }
-              }
-            ],
-            "outbounds": [
-              {
-                "protocol": "vmess",
-                "settings": {
-                  "vnext": [
-                    {
-                      "address": "${{ github.event.inputs.server_address }}",
-                      "port": ${{ github.event.inputs.port }},
-                      "users": [
-                        {
-                          "id": "${{ steps.uuid.outputs.uuid }}",
-                          "security": "auto",
-                          "alterId": 0
-                        }
-                      ]
-                    }
-                  ]
-                },
-                "streamSettings": {
-                  "network": "ws",
-                  "security": "tls",
-                  "wsSettings": {
-                    "path": "${{ github.event.inputs.path }}"
-                  }
-                }
-              },
-              {
-                "protocol": "freedom",
-                "tag": "direct",
-                "settings": {}
-              },
-              {
-                "protocol": "blackhole",
-                "tag": "block",
-                "settings": {}
-              }
-            ],
-            "routing": {
-              "domainStrategy": "IPIfNonMatch",
-              "rules": [
-                {
-                  "type": "field",
-                  "ip": ["geoip:private"],
-                  "outboundTag": "direct"
-                },
-                {
-                  "type": "field",
-                  "domain": ["geosite:category-ads-all"],
-                  "outboundTag": "block"
-                }
-              ]
-            }
-          }
-          EOF
-      
-      - name: Create client config (for v2rayN / v2rayNG)
-        run: |
-          cat > client-config.json << EOF
-          {
-            "outbounds": [
-              {
-                "protocol": "vmess",
-                "settings": {
-                  "vnext": [
-                    {
-                      "address": "${{ github.event.inputs.server_address }}",
-                      "port": ${{ github.event.inputs.port }},
-                      "users": [
-                        {
-                          "id": "${{ steps.uuid.outputs.uuid }}",
-                          "security": "auto",
-                          "alterId": 0
-                        }
-                      ]
-                    }
-                  ]
-                },
-                "streamSettings": {
-                  "network": "ws",
-                  "security": "tls",
-                  "wsSettings": {
-                    "path": "${{ github.event.inputs.path }}"
-                  }
-                },
-                "mux": {
-                  "enabled": true
-                }
-              }
-            ]
-          }
-          EOF
-      
-      - name: Create VMess link
-        run: |
-          VMESS_JSON=$(cat << EOF
-          {
-            "v": "2",
-            "ps": "GitHub-Action-Config",
-            "add": "${{ github.event.inputs.server_address }}",
-            "port": "${{ github.event.inputs.port }}",
-            "id": "${{ steps.uuid.outputs.uuid }}",
-            "aid": "0",
-            "scy": "auto",
-            "net": "ws",
-            "type": "none",
-            "host": "",
-            "path": "${{ github.event.inputs.path }}",
-            "tls": "tls"
-          }
-          EOF
-          )
+          cat > my-v2ray-config.txt << "EOF"
+          # V2Ray Configuration
+          # Generated by GitHub Actions
           
-          ENCODED=$(echo -n "$VMESS_JSON" | base64 -w 0)
-          echo "vmess://$ENCODED" > vmess-link.txt
+          Server: ${{ github.event.inputs.server_address }}
+          Port: ${{ github.event.inputs.port }}
+          UUID: ${{ github.event.inputs.uuid }}
+          Protocol: vmess
+          Network: ws
+          Security: tls
+          Path: /v2ray
+          
+          # VMess Link:
+          vmess://$(echo -n "{\"v\":\"2\",\"ps\":\"MyConfig\",\"add\":\"${{ github.event.inputs.server_address }}\",\"port\":\"${{ github.event.inputs.port }}\",\"id\":\"${{ github.event.inputs.uuid }}\",\"aid\":\"0\",\"net\":\"ws\",\"path\":\"/v2ray\",\"tls\":\"tls\"}" | base64 -w 0)
+          EOF
+          
+          echo "Config saved to my-v2ray-config.txt"
+          cat my-v2ray-config.txt
       
-      - name: Upload artifacts
+      - name: Upload config file
         uses: actions/upload-artifact@v4
         with:
-          name: v2ray-configs
-          path: |
-            config.json
-            client-config.json
-            vmess-link.txt
-      
-      - name: Display VMess link
-        run: |
-          echo "================== VMess Link =================="
-          cat vmess-link.txt
-          echo "================================================"
+          name: v2ray-config
+          path: my-v2ray-config.txt
+          retention-days: 30
